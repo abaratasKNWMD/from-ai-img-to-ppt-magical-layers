@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+.venv/
+venv/
+env/
+
+# Local input datasets. Keep your own generated/test images here.
+images/*
+!images/.gitkeep
+
+# Generated decks, renders, reports, logs, and packaged desktop builds.
+outputs/
+build/
+dist/
+*.pptx
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.log
+*.pid
