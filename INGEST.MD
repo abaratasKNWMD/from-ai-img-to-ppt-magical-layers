@@ -96,8 +96,10 @@ UI upload or CLI
 - Do not treat large black rectangles as plain slide background by default. They may be design blocks that must remain movable.
 - Preserve pale cards/shadows as surface layers. Otherwise UI-like generated images lose panels and depth.
 - In heavy mode, favor more layers over smaller PPTX files.
+- In heavy mode, partition sparse wide/short or tall/narrow components. Large selection boxes around long arrows, table rules, and connector bands are a quality failure even when visual render metrics look acceptable.
 - Do not over-merge arrows/icons into nearby text or panels.
 - OCR should be opt-in because raster text usually gives better visual fidelity than imperfect native text reconstruction.
+- Full OCR mode can recover many text lines in dense diagrams, but it is experimental; validate visual output because font sizing/OCR errors can be worse than keeping text rasterized.
 - If an LLM model is missing/rate-limited, the job must still finish with local deterministic scoring.
 
 ## OpenRouter Notes

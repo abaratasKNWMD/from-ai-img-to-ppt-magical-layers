@@ -228,6 +228,18 @@ def index() -> str:
       font-size: 12px;
       line-height: 1.25;
     }}
+    .check select {{
+      width: 100%;
+      min-height: 34px;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      background: var(--panel);
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+    }}
     .segmented {{
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -520,7 +532,12 @@ def index() -> str:
               <input id="ocr" name="ocr" type="checkbox" value="true">
               <div>
                 <label for="ocr">Texto OCR editable</label>
-                <small>Convierte texto grande en cajas nativas.</small>
+                <small>Reconstruye texto como objetos PPTX cuando convenga.</small>
+                <select id="editable-text-mode" name="editable_text_mode" aria-label="Modo de texto OCR">
+                  <option value="large" selected>Solo títulos y texto grande</option>
+                  <option value="all">Todo el texto detectado experimental</option>
+                  <option value="none">Forzar texto raster exacto</option>
+                </select>
               </div>
             </div>
             <div class="check">
@@ -873,6 +890,7 @@ async def create_job(
     brain: bool = Form(False),
     compact: bool = Form(False),
     detail_mode: str = Form("heavy"),
+    editable_text_mode: str = Form("large"),
 ) -> dict[str, Any]:
     uploads = [upload for upload in (files or []) if upload.filename]
     if file is not None and file.filename:
@@ -915,6 +933,7 @@ async def create_job(
         "brain": brain and bool(os.getenv("OPENROUTER_API_KEY")),
         "compact": compact,
         "detail_mode": detail_mode,
+        "editable_text_mode": _editable_text_mode(editable_text_mode),
     }
     asyncio.create_task(_run_job_async(job_id, input_paths, output_path, options))
     return _public_job(job_id)
@@ -1027,7 +1046,7 @@ def _run_job(job_id: str, input_paths: list[Path], output_path: Path, options: d
                     output_path.parent,
                     index,
                     enable_ocr=bool(options["ocr"]),
-                    editable_text_mode="large" if options["ocr"] else "none",
+                    editable_text_mode=str(options["editable_text_mode"]) if options["ocr"] else "none",
                     include_images=True,
                     ensemble=True,
                     progress=lambda message, current=index, count=total: _set_job(
@@ -1054,7 +1073,7 @@ def _run_job(job_id: str, input_paths: list[Path], output_path: Path, options: d
                 pipeline_options = PipelineOptions(
                     enable_ocr=bool(options["ocr"]),
                     enable_brain=False,
-                    editable_text_mode="large" if options["ocr"] else "none",
+                    editable_text_mode=str(options["editable_text_mode"]) if options["ocr"] else "none",
                     segment=_segment_options(str(options["detail_mode"]), bool(options["compact"])),
                 )
                 result = image_to_layers(input_path, pipeline_options)
@@ -1148,6 +1167,10 @@ def _convert_image(input_path: Path, output_path: Path, ocr: bool) -> None:
 
 def _segment_options(detail_mode: str, compact: bool):
     return segment_preset(detail_mode, compact=compact)
+
+
+def _editable_text_mode(value: str) -> str:
+    return value if value in {"none", "large", "all"} else "large"
 
 
 def _parse_models(value: str) -> list[str]:
@@ -1294,7 +1317,8 @@ def _compact_judge(judge_result: dict[str, Any] | None) -> dict[str, Any] | None
 def _analysis_message(options: dict[str, Any]) -> str:
     parts = ["segmentación pesada" if options.get("detail_mode") == "heavy" else "segmentación"]
     if options["ocr"]:
-        parts.append("OCR")
+        text_mode = "OCR completo" if options.get("editable_text_mode") == "all" else "OCR"
+        parts.append(text_mode)
     if options["brain"]:
         parts.append("agentes OpenRouter")
     return " + ".join(parts).capitalize() + " en marcha."

@@ -60,6 +60,8 @@ http://127.0.0.1:8000
 
 Use the UI to upload one or many images, choose processing options, watch the progress bar, and download the generated PPTX.
 
+For dense architecture diagrams, keep **Pesado** selected and leave OCR off for the closest visual match. If you need native PowerPoint text objects, enable OCR and choose either large-text-only or the experimental all-text mode. All-text OCR is useful for analysis, but it can reduce visual fidelity on small dense labels.
+
 The main job endpoints are:
 
 - `POST /jobs` - create a conversion job. Send `files` for multi-image decks or legacy `file` for one image.
@@ -96,7 +98,7 @@ custom    honor threshold/min-area flags directly
 Put local test images in `images/`, then run:
 
 ```powershell
-python -m magical_layers.batch --input-dir images --output-dir outputs\batch_quality --editable-text none --bg-thresholds 35,18
+python -m magical_layers.batch --input-dir images --output-dir outputs\batch_quality --preset heavy --editable-text none --bg-thresholds 35,18
 ```
 
 Batch mode writes PPTX candidates, rendered PNGs, preview images, `report.csv`, and `report.html`. These outputs are intentionally ignored by git.

@@ -16,6 +16,7 @@ def segment_preset(mode: str = "heavy", compact: bool = False) -> SegmentOptions
             alpha_low=4.0,
             alpha_high=55.0,
             partition_large_components=True,
+            partition_min_area_px=800,
             partition_density_threshold=0.10,
             partition_min_gap_px=3,
             partition_max_depth=9,

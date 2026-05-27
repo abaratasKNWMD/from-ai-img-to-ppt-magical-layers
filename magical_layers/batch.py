@@ -14,6 +14,7 @@ from .evaluation import compare_render, make_comparison_image, render_pptx_first
 from .openrouter_judge import DEFAULT_JUDGE_MODELS, JudgeConfig, judge_candidates
 from .orchestrator import PipelineOptions, image_to_layers
 from .pptx_writer import write_pptx
+from .presets import segment_preset
 from .segmentation import SegmentOptions
 
 
@@ -28,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--start", type=int, default=1, help="1-based start index in sorted image list.")
     parser.add_argument("--no-render", action="store_true")
+    parser.add_argument(
+        "--preset",
+        choices=["heavy", "auto", "granular", "grouped", "custom"],
+        default="heavy",
+        help="Segmentation preset. Use custom to honor low-level threshold/min-area/dilation flags.",
+    )
     parser.add_argument("--bg-threshold", type=float, default=35.0)
     parser.add_argument("--bg-thresholds", default=None, help="Comma-separated thresholds for auto mode, for example 35,18.")
     parser.add_argument("--surface-threshold", type=float, default=18.0)
@@ -136,13 +143,7 @@ def _process_candidate(
         ocr_lang=args.ocr_lang,
         editable_text_mode=mode,
         editable_text_min_height=args.editable_min_height,
-        segment=SegmentOptions(
-                bg_threshold=threshold,
-            surface_threshold=args.surface_threshold if threshold > args.surface_threshold else None,
-            dilation_px=args.dilation,
-            min_area_px=args.min_area,
-            max_layers=args.max_layers,
-        ),
+        segment=_segment_options(args, threshold),
     )
     result = image_to_layers(image_path, options)
     write_pptx(result, pptx_path, dpi=args.dpi)
@@ -174,6 +175,20 @@ def _process_candidate(
         else:
             row["render_error"] = render.error or "unknown render error"
     return row
+
+
+def _segment_options(args: argparse.Namespace, threshold: float) -> SegmentOptions:
+    if args.preset != "custom":
+        options = segment_preset(args.preset)
+        options.bg_threshold = threshold
+        return options
+    return SegmentOptions(
+        bg_threshold=threshold,
+        surface_threshold=args.surface_threshold if threshold > args.surface_threshold else None,
+        dilation_px=args.dilation,
+        min_area_px=args.min_area,
+        max_layers=args.max_layers,
+    )
 
 
 def _judge_if_enabled(

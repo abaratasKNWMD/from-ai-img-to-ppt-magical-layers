@@ -316,8 +316,7 @@ def _split_mask_regions(
     height, width = mask.shape
     if (
         depth >= options.partition_max_depth
-        or width < options.partition_min_span_px
-        or height < options.partition_min_span_px
+        or (width < options.partition_min_span_px and height < options.partition_min_span_px)
         or int(mask.sum()) < options.partition_min_area_px
     ):
         return [(mask, offset_x, offset_y)]
@@ -346,8 +345,16 @@ def _best_sparse_split(mask: np.ndarray, options: SegmentOptions) -> tuple[int, 
     height, width = mask.shape
     col_density = mask.sum(axis=0) / max(1, height)
     row_density = mask.sum(axis=1) / max(1, width)
-    col_gap = _longest_sparse_run(col_density, options.partition_density_threshold, options.partition_min_gap_px)
-    row_gap = _longest_sparse_run(row_density, options.partition_density_threshold, options.partition_min_gap_px)
+    col_gap = (
+        _longest_sparse_run(col_density, options.partition_density_threshold, options.partition_min_gap_px)
+        if width >= options.partition_min_span_px
+        else None
+    )
+    row_gap = (
+        _longest_sparse_run(row_density, options.partition_density_threshold, options.partition_min_gap_px)
+        if height >= options.partition_min_span_px
+        else None
+    )
     candidates: list[tuple[float, int, int]] = []
     if col_gap is not None:
         start, end = col_gap
