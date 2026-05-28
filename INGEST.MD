@@ -47,6 +47,7 @@ Primary quality goal: maximize editability without destroying visual fidelity. I
 - `magical_layers/pptx_writer.py`
   - Writes single-slide and multi-slide PPTX decks using `python-pptx`.
   - Raster shapes are named with their layer IDs so the PowerPoint selection pane proves/helps layer inspection.
+  - Slide background color is written as real PPTX background fill, not as a selectable full-slide rectangle.
 - `magical_layers/evaluation.py`
   - Renders PPTX slides, computes MAE/PSNR/edge F1, creates previews.
 - `magical_layers/agentic.py`

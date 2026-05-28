@@ -6,7 +6,6 @@ from collections.abc import Sequence
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Emu, Pt
 
@@ -42,7 +41,7 @@ def write_pptx_deck(results: Sequence[PipelineResult], output_path: str | Path, 
 
 def _add_result_slide(prs: Presentation, blank_layout, result: PipelineResult) -> None:
     slide = prs.slides.add_slide(blank_layout)
-    _paint_background(slide, prs, result.background_color)
+    _paint_background(slide, result.background_color)
 
     slide_width = int(prs.slide_width)
     slide_height = int(prs.slide_height)
@@ -72,18 +71,10 @@ def _add_result_slide(prs: Presentation, blank_layout, result: PipelineResult) -
         _add_text_layer(slide, layer, scale, offset_x, offset_y)
 
 
-def _paint_background(slide, prs: Presentation, color: tuple[int, int, int]) -> None:
-    shape = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.RECTANGLE,
-        0,
-        0,
-        prs.slide_width,
-        prs.slide_height,
-    )
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = RGBColor(*color)
-    shape.line.fill.background()
-    shape.name = "background_color"
+def _paint_background(slide, color: tuple[int, int, int]) -> None:
+    fill = slide.background.fill
+    fill.solid()
+    fill.fore_color.rgb = RGBColor(*color)
 
 
 def _add_text_layer(slide, layer: Layer, scale: float, offset_x: float, offset_y: float) -> None:

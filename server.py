@@ -14,6 +14,7 @@ from dotenv import load_dotenv, set_key
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from magical_layers.agentic import run_agentic_selection
 from magical_layers.evaluation import compare_render, render_pptx_first_slide, render_pptx_slides
@@ -1226,15 +1227,22 @@ def _write_individual_pptx_zip(
     pptx_dir = output_path.parent / "individual_pptx"
     pptx_dir.mkdir(parents=True, exist_ok=True)
     pptx_paths: list[Path] = []
+    manifest_rows = ["file,slides,objects,picture_layers,text_layers"]
     for index, (result, input_path) in enumerate(zip(results, input_paths, strict=False), start=1):
         original_name = original_names[index - 1] if index - 1 < len(original_names) else ""
         safe_stem = _safe_stem(Path(original_name) if original_name else input_path)
         pptx_path = pptx_dir / f"{index:02d}_{safe_stem}_layers.pptx"
         write_pptx(result, pptx_path)
         pptx_paths.append(pptx_path)
+        stats = _shape_stats(pptx_path)
+        manifest_rows.append(
+            f"{pptx_path.name},{stats['slides']},{stats['shapes']},{stats['picture_shapes']},{stats['text_shapes']}"
+        )
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for pptx_path in pptx_paths:
             archive.write(pptx_path, arcname=pptx_path.name)
+        archive.writestr("LAYERS_MANIFEST.csv", "\n".join(manifest_rows) + "\n")
+        archive.writestr("README_SHAREPOINT.txt", _sharepoint_readme())
     return pptx_paths
 
 
@@ -1270,13 +1278,28 @@ def _parse_models(value: str) -> list[str]:
 def _shape_stats(pptx_path: Path) -> dict[str, int]:
     prs = Presentation(pptx_path)
     shape_count = 0
+    picture_shapes = 0
     text_shapes = 0
     for slide in prs.slides:
         shape_count += len(slide.shapes)
         for shape in slide.shapes:
+            if getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.PICTURE:
+                picture_shapes += 1
             if getattr(shape, "has_text_frame", False) and shape.text.strip():
                 text_shapes += 1
-    return {"slides": len(prs.slides), "shapes": shape_count, "text_shapes": text_shapes}
+    return {"slides": len(prs.slides), "shapes": shape_count, "picture_shapes": picture_shapes, "text_shapes": text_shapes}
+
+
+def _sharepoint_readme() -> str:
+    return (
+        "Magical Layers - lectura en SharePoint / PowerPoint\n\n"
+        "1. Extrae este ZIP antes de subirlo. SharePoint no edita las capas dentro de un ZIP.\n"
+        "2. Sube o abre cada archivo .pptx individual, no el ZIP completo.\n"
+        "3. En PowerPoint para la web, entra en modo edicion y abre Organizar > Panel de seleccion.\n"
+        "4. Las capas raster estan nombradas como raster_001, raster_002, etc.\n"
+        "5. Si el navegador lo muestra como una imagen plana o va lento, usa Abrir en la aplicacion de escritorio.\n"
+        "6. LAYERS_MANIFEST.csv contiene el recuento de objetos y capas de imagen por PPTX.\n"
+    )
 
 
 def _average_metrics(rows: list[dict[str, float]]) -> dict[str, float]:

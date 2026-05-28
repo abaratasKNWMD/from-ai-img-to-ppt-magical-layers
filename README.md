@@ -64,6 +64,8 @@ For dense architecture diagrams, keep **Pesado** selected and leave OCR off for 
 
 When uploading multiple images, choose either **Deck único** for one multi-slide PPTX or **PPTX individuales ZIP** for a ZIP containing one single-slide PPTX per image. The ZIP mode is best when input images have different aspect ratios or when you want to inspect each layered slide independently in PowerPoint.
 
+For SharePoint, extract the ZIP and upload/open the individual `.pptx` files. Browser preview can look flat until you enter edit mode and open **Arrange > Selection Pane**; the ZIP includes `LAYERS_MANIFEST.csv` with the exact object counts.
+
 The main job endpoints are:
 
 - `POST /jobs` - create a conversion job. Send `files` for multi-image decks or legacy `file` for one image.
