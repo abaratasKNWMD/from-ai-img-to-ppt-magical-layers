@@ -19,6 +19,7 @@ Primary quality goal: maximize editability without destroying visual fidelity. I
   - FastAPI web app.
   - Owns the upload UI, `/jobs` API, progress tracking, OpenRouter settings UI, and download endpoint.
   - `_run_job()` orchestrates multi-image deck creation.
+  - Multi-image jobs can return either one deck or a ZIP with one single-slide PPTX per image. Prefer ZIP when source images have different aspect ratios.
 - `desktop_launcher.py`
   - Windows double-click wrapper.
   - Starts `server.app` through Uvicorn in-process, chooses a free localhost port, opens the browser, and shows a small Tkinter control window.
@@ -45,6 +46,7 @@ Primary quality goal: maximize editability without destroying visual fidelity. I
   - Optional Windows OCR via `winocr`; safely returns empty OCR results if unavailable.
 - `magical_layers/pptx_writer.py`
   - Writes single-slide and multi-slide PPTX decks using `python-pptx`.
+  - Raster shapes are named with their layer IDs so the PowerPoint selection pane proves/helps layer inspection.
 - `magical_layers/evaluation.py`
   - Renders PPTX slides, computes MAE/PSNR/edge F1, creates previews.
 - `magical_layers/agentic.py`

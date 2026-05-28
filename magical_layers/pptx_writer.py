@@ -59,13 +59,14 @@ def _add_result_slide(prs: Presentation, blank_layout, result: PipelineResult) -
         stream = BytesIO()
         layer.image.save(stream, format="PNG")
         stream.seek(0)
-        slide.shapes.add_picture(
+        picture = slide.shapes.add_picture(
             stream,
             Emu(round(offset_x + layer.bbox.x * scale)),
             Emu(round(offset_y + layer.bbox.y * scale)),
             width=Emu(round(layer.bbox.width * scale)),
             height=Emu(round(layer.bbox.height * scale)),
         )
+        picture.name = layer.id
 
     for layer in text_layers:
         _add_text_layer(slide, layer, scale, offset_x, offset_y)
@@ -82,6 +83,7 @@ def _paint_background(slide, prs: Presentation, color: tuple[int, int, int]) -> 
     shape.fill.solid()
     shape.fill.fore_color.rgb = RGBColor(*color)
     shape.line.fill.background()
+    shape.name = "background_color"
 
 
 def _add_text_layer(slide, layer: Layer, scale: float, offset_x: float, offset_y: float) -> None:

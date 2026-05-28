@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pptx import Presentation
 
 from magical_layers.agentic import run_agentic_selection
-from magical_layers.evaluation import compare_render, render_pptx_slides
+from magical_layers.evaluation import compare_render, render_pptx_first_slide, render_pptx_slides
 from magical_layers.llm import DEFAULT_FREE_BRAIN_MODELS
 from magical_layers.openrouter_judge import judge_model_chain
 from magical_layers.orchestrator import PipelineOptions, image_to_layers
@@ -31,6 +32,7 @@ app = FastAPI(title="Magical Layers Local")
 JOBS: dict[str, dict[str, Any]] = {}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+ZIP_MEDIA_TYPE = "application/zip"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -269,6 +271,9 @@ def index() -> str:
       color: var(--ink);
       background: var(--panel);
       box-shadow: inset 0 0 0 1px #cfdad6;
+    }}
+    .output-mode {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
     .actions {{
       display: flex;
@@ -567,6 +572,13 @@ def index() -> str:
             <label for="detail-auto">Equilibrado</label>
             <input id="detail-grouped" type="radio" name="detail_mode" value="grouped">
             <label for="detail-grouped">Liviano</label>
+          </div>
+
+          <div class="segmented output-mode" role="radiogroup" aria-label="Salida">
+            <input id="output-deck" type="radio" name="output_mode" value="deck" checked>
+            <label for="output-deck">Deck único</label>
+            <input id="output-zip" type="radio" name="output_mode" value="zip">
+            <label for="output-zip">PPTX individuales ZIP</label>
           </div>
 
           <div class="actions">
@@ -891,6 +903,7 @@ async def create_job(
     compact: bool = Form(False),
     detail_mode: str = Form("heavy"),
     editable_text_mode: str = Form("large"),
+    output_mode: str = Form("deck"),
 ) -> dict[str, Any]:
     uploads = [upload for upload in (files or []) if upload.filename]
     if file is not None and file.filename:
@@ -909,8 +922,9 @@ async def create_job(
         input_path.write_bytes(await upload.read())
         input_paths.append(input_path)
 
-    output_path = workdir / "magical_layers_output.pptx"
     total_files = len(input_paths)
+    parsed_output_mode = _output_mode(output_mode, total_files)
+    output_path = workdir / ("magical_layers_output.zip" if parsed_output_mode == "zip" else "magical_layers_output.pptx")
 
     JOBS[job_id] = {
         "id": job_id,
@@ -920,7 +934,8 @@ async def create_job(
         "message": f"{total_files} imagen{'es' if total_files != 1 else ''} recibida{'s' if total_files != 1 else ''}.",
         "summary": "Esperando turno local.",
         "created_at": time.time(),
-        "filename": _pptx_filename([upload.filename for upload in uploads]),
+        "filename": _download_filename([upload.filename for upload in uploads], parsed_output_mode),
+        "media_type": ZIP_MEDIA_TYPE if parsed_output_mode == "zip" else PPTX_MEDIA_TYPE,
         "input_paths": [str(path) for path in input_paths],
         "output_path": str(output_path),
         "total_files": total_files,
@@ -934,6 +949,8 @@ async def create_job(
         "compact": compact,
         "detail_mode": detail_mode,
         "editable_text_mode": _editable_text_mode(editable_text_mode),
+        "output_mode": parsed_output_mode,
+        "original_names": [upload.filename for upload in uploads],
     }
     asyncio.create_task(_run_job_async(job_id, input_paths, output_path, options))
     return _public_job(job_id)
@@ -1000,7 +1017,7 @@ def download_job(job_id: str) -> FileResponse:
     output_path = Path(str(job["output_path"]))
     if not output_path.exists():
         raise HTTPException(status_code=404, detail="Archivo PPTX no encontrado.")
-    return FileResponse(output_path, media_type=PPTX_MEDIA_TYPE, filename=str(job["filename"]))
+    return FileResponse(output_path, media_type=str(job.get("media_type") or PPTX_MEDIA_TYPE), filename=str(job["filename"]))
 
 
 @app.post("/convert")
@@ -1090,11 +1107,22 @@ def _run_job(job_id: str, input_paths: list[Path], output_path: Path, options: d
         _set_job(
             job_id,
             progress=70,
-            phase="Montando deck",
-            message=f"{total} slide{'s' if total != 1 else ''}, {total_layers} capas raster.",
+            phase="Montando salida",
+            message=f"{total} imagen{'es' if total != 1 else ''}, {total_layers} capas raster.",
         )
-        write_pptx_deck(results, output_path)
-        shape_stats = _shape_stats(output_path)
+        pptx_paths: list[Path]
+        if options.get("output_mode") == "zip":
+            pptx_paths = _write_individual_pptx_zip(
+                results,
+                input_paths,
+                output_path,
+                [str(name or "") for name in options.get("original_names", [])],
+            )
+            shape_stats = _combined_shape_stats(pptx_paths)
+        else:
+            write_pptx_deck(results, output_path)
+            pptx_paths = [output_path]
+            shape_stats = _shape_stats(output_path)
         _set_job(
             job_id,
             progress=76,
@@ -1105,12 +1133,22 @@ def _run_job(job_id: str, input_paths: list[Path], output_path: Path, options: d
         quality = None
         if options["quality_check"]:
             _set_job(job_id, progress=84, phase="Midiendo calidad", message="Renderizando diapositivas.")
-            render_results = render_pptx_slides(output_path, output_path.parent / "renders", max_slides=total)
-            metrics_rows = [
-                compare_render(input_path, render.image_path)
-                for input_path, render in zip(input_paths, render_results, strict=False)
-                if render.ok and render.image_path
-            ]
+            if options.get("output_mode") == "zip":
+                render_results = [
+                    render_pptx_first_slide(path, output_path.parent / "renders" / f"{path.stem}.png") for path in pptx_paths
+                ]
+                metrics_rows = [
+                    compare_render(input_path, render.image_path)
+                    for input_path, render in zip(input_paths, render_results, strict=False)
+                    if render.ok and render.image_path
+                ]
+            else:
+                render_results = render_pptx_slides(output_path, output_path.parent / "renders", max_slides=total)
+                metrics_rows = [
+                    compare_render(input_path, render.image_path)
+                    for input_path, render in zip(input_paths, render_results, strict=False)
+                    if render.ok and render.image_path
+                ]
             if metrics_rows:
                 metrics = _average_metrics(metrics_rows)
                 quality = _quality_from_metrics(metrics)
@@ -1141,7 +1179,7 @@ def _run_job(job_id: str, input_paths: list[Path], output_path: Path, options: d
             job_id,
             status="done",
             progress=100,
-            phase="PPTX listo",
+            phase="Salida lista",
             message="Descarga preparada.",
             summary=summary,
             download_url=f"/jobs/{job_id}/download",
@@ -1171,6 +1209,50 @@ def _segment_options(detail_mode: str, compact: bool):
 
 def _editable_text_mode(value: str) -> str:
     return value if value in {"none", "large", "all"} else "large"
+
+
+def _output_mode(value: str, total_files: int) -> str:
+    if value == "zip" and total_files > 1:
+        return "zip"
+    return "deck"
+
+
+def _write_individual_pptx_zip(
+    results: list,
+    input_paths: list[Path],
+    output_path: Path,
+    original_names: list[str],
+) -> list[Path]:
+    pptx_dir = output_path.parent / "individual_pptx"
+    pptx_dir.mkdir(parents=True, exist_ok=True)
+    pptx_paths: list[Path] = []
+    for index, (result, input_path) in enumerate(zip(results, input_paths, strict=False), start=1):
+        original_name = original_names[index - 1] if index - 1 < len(original_names) else ""
+        safe_stem = _safe_stem(Path(original_name) if original_name else input_path)
+        pptx_path = pptx_dir / f"{index:02d}_{safe_stem}_layers.pptx"
+        write_pptx(result, pptx_path)
+        pptx_paths.append(pptx_path)
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for pptx_path in pptx_paths:
+            archive.write(pptx_path, arcname=pptx_path.name)
+    return pptx_paths
+
+
+def _safe_stem(path: Path) -> str:
+    stem = "".join(char if char.isalnum() else "_" for char in path.stem).strip("_")
+    while "__" in stem:
+        stem = stem.replace("__", "_")
+    return stem or "image"
+
+
+def _combined_shape_stats(pptx_paths: list[Path]) -> dict[str, int]:
+    totals = {"slides": 0, "shapes": 0, "text_shapes": 0}
+    for path in pptx_paths:
+        stats = _shape_stats(path)
+        totals["slides"] += stats["slides"]
+        totals["shapes"] += stats["shapes"]
+        totals["text_shapes"] += stats["text_shapes"]
+    return totals
 
 
 def _parse_models(value: str) -> list[str]:
@@ -1322,6 +1404,14 @@ def _analysis_message(options: dict[str, Any]) -> str:
     if options["brain"]:
         parts.append("agentes OpenRouter")
     return " + ".join(parts).capitalize() + " en marcha."
+
+
+def _download_filename(original: str | list[str | None] | None, output_mode: str) -> str:
+    if output_mode == "zip":
+        if isinstance(original, list) and len(original) > 1:
+            return f"magical_layers_{len(original)}_pptx_layers.zip"
+        return "magical_layers_pptx_layers.zip"
+    return _pptx_filename(original)
 
 
 def _pptx_filename(original: str | list[str | None] | None) -> str:

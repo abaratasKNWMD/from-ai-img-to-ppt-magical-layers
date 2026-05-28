@@ -62,6 +62,8 @@ Use the UI to upload one or many images, choose processing options, watch the pr
 
 For dense architecture diagrams, keep **Pesado** selected and leave OCR off for the closest visual match. If you need native PowerPoint text objects, enable OCR and choose either large-text-only or the experimental all-text mode. All-text OCR is useful for analysis, but it can reduce visual fidelity on small dense labels.
 
+When uploading multiple images, choose either **Deck único** for one multi-slide PPTX or **PPTX individuales ZIP** for a ZIP containing one single-slide PPTX per image. The ZIP mode is best when input images have different aspect ratios or when you want to inspect each layered slide independently in PowerPoint.
+
 The main job endpoints are:
 
 - `POST /jobs` - create a conversion job. Send `files` for multi-image decks or legacy `file` for one image.
